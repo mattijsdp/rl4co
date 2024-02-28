@@ -4,6 +4,7 @@ from rl4co.envs.routing.mtsp import MTSPEnv
 from rl4co.envs.routing.op import OPEnv
 from rl4co.envs.routing.pctsp import PCTSPEnv
 from rl4co.envs.routing.pdp import PDPEnv
+from rl4co.envs.routing.cpdptw import CPDPTWEnv
 from rl4co.envs.routing.sdvrp import SDVRPEnv
 from rl4co.envs.routing.spctsp import SPCTSPEnv
 from rl4co.envs.routing.tsp import TSPEnv
