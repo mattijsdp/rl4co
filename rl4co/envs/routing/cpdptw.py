@@ -15,7 +15,9 @@ from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 
 
 class CPDPTWEnv(PDPEnv):
-    """Pickup and Delivery Problem with Time Windows (PDPTW) environment.
+    """(Capacitated) Pickup and Delivery Problem with Time Windows (CPDPTW) environment.
+    Inherits from the PDPEnv class in which capacities and time windows are added.
+    Additionally considers time windows within which a pickups have to be completed.
     The environment is made of num_loc + 1 locations (cities):
         - 1 depot
         - `num_loc` / 2 pickup locations
@@ -123,6 +125,31 @@ class CPDPTWEnv(PDPEnv):
             {
                 "durations": durations,
                 "time_windows": time_windows,
+                # vehicle_idx=vehicle_idx,
             }
         )
-        return td
+
+    def _reset(
+        self, td: Optional[TensorDict] = None, batch_size: Optional[int] = None
+    ) -> TensorDict:
+        """Reset the environment to an initial state.
+
+        Args:
+            td: tensor dictionary containing the parameters of the environment
+            batch_size: batch size for the environment
+
+        Returns:
+            Tensor dictionary containing the initial observation
+        """
+
+        td_reset = super()._reset(td, batch_size)
+        td_reset.update(
+            {
+                "current_time": torch.zeros(
+                    *batch_size, 1, dtype=torch.float32, device=self.device
+                ),
+                "durations": td["durations"],
+                "time_windows": td["time_windows"],
+            }
+        )
+        return td_reset
