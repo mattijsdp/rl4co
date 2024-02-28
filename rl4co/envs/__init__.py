@@ -12,6 +12,7 @@ from rl4co.envs.routing import (
     OPEnv,
     PCTSPEnv,
     PDPEnv,
+    CPDPTWEnv,
     SDVRPEnv,
     SPCTSPEnv,
     TSPEnv,
