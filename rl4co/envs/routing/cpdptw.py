@@ -48,6 +48,67 @@ class CPDPTWEnv(PDPEnv):
         self.max_time = max_time
         self.scale = scale
 
+    def _make_spec(self, td_params: Optional[TensorDict] = None):
+        super().make_spec(td_params)
+
+        current_time = UnboundedContinuousTensorSpec(
+            shape=(1), dtype=torch.float32, device=self.device
+        )
+
+        durations = BoundedTensorSpec(
+            low=self.min_time,
+            high=self.max_time,
+            shape=(self.num_loc, 1),
+            dtype=torch.int64,
+            device=self.device,
+        )
+
+        time_windows = BoundedTensorSpec(
+            low=self.min_time,
+            high=self.max_time,
+            shape=(
+                self.num_loc, 2
+            ),  # each location has a 2D time window (start, end)
+            dtype=torch.int64,
+            device=self.device,
+        )
+
+        # extend observation specs
+        self.observation_spec = CompositeSpec(
+            {
+                **self.observation_spec,
+                "current_time": current_time,
+                "durations": durations,
+                "time_windows": time_windows,
+                # vehicle_idx=vehicle_idx,
+            }
+        )
+
+    def _reset(
+        self, td: Optional[TensorDict] = None, batch_size: Optional[int] = None
+    ) -> TensorDict:
+        """Reset the environment to an initial state.
+
+        Args:
+            td: tensor dictionary containing the parameters of the environment
+            batch_size: batch size for the environment
+
+        Returns:
+            Tensor dictionary containing the initial observation
+        """
+
+        td_reset = super()._reset(td, batch_size)
+        td_reset.update(
+            {
+                "current_time": torch.zeros(
+                    *batch_size, 1, dtype=torch.float32, device=self.device
+                ),
+                "durations": td["durations"],
+                "time_windows": td["time_windows"],
+            }
+        )
+        return td_reset
+
     def generate_data(self, batch_size) -> TensorDict:
         td = super().generate_data(batch_size)
 
