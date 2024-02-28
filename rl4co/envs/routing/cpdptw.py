@@ -17,7 +17,7 @@ from rl4co.data.utils import (
 )
 
 
-Class CPDPTWEnv(PDPEnv):
+class CPDPTWEnv(PDPEnv):
     """(Capacitated) Pickup and Delivery Problem with Time Windows (CPDPTW) environment.
     Inherits from the PDPEnv class in which capacities and time windows are added.
     Additionally considers time windows within which a pickups have to be completed.
@@ -57,13 +57,9 @@ Class CPDPTWEnv(PDPEnv):
             shape=(1), dtype=torch.float32, device=self.device
         )
 
-        current_loc = UnboundedContinuousTensorSpec(
-            shape=(2), dtype=torch.float32, device=self.device
-        )
-
         durations = BoundedTensorSpec(
             low=self.min_time,
-            high=self.min_time,
+            high=self.max_time,
             shape=(self.num_loc, 1),
             dtype=torch.int64,
             device=self.device,
@@ -82,17 +78,35 @@ Class CPDPTWEnv(PDPEnv):
         # extend observation specs
         self.observation_spec = CompositeSpec(
             {
+                **self.observation_spec,
                 "current_time": current_time,
-                "current_loc": current_loc,
                 "durations": durations,
                 "time_windows": time_windows,
                 # vehicle_idx=vehicle_idx,
-                **self.observation_spec,
             }
         )
 
-
     def _reset(
-        
-    )
-        
+        self, td: Optional[TensorDict] = None, batch_size: Optional[int] = None
+    ) -> TensorDict:
+        """Reset the environment to an initial state.
+
+        Args:
+            td: tensor dictionary containing the parameters of the environment
+            batch_size: batch size for the environment
+
+        Returns:
+            Tensor dictionary containing the initial observation
+        """
+
+        td_reset = super()._reset(td, batch_size)
+        td_reset.update(
+            {
+                "current_time": torch.zeros(
+                    *batch_size, 1, dtype=torch.float32, device=self.device
+                ),
+                "durations": td["durations"],
+                "time_windows": td["time_windows"],
+            }
+        )
+        return td_reset
