@@ -1,4 +1,3 @@
-from math import sqrt
 from typing import Optional
 import torch
 from tensordict.tensordict import TensorDict
@@ -6,14 +5,6 @@ from torchrl.data import (
     BoundedTensorSpec,
     CompositeSpec,
     UnboundedContinuousTensorSpec,
-)
-
-from rl4co.envs.routing.cvrp import PDPEnv, CAPACITIES
-from rl4co.utils.ops import gather_by_index, get_distance
-from rl4co.data.utils import (
-    load_npz_to_tensordict,
-    load_solomon_instance,
-    load_solomon_solution,
 )
 
 
