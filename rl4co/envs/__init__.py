@@ -31,6 +31,7 @@ ENV_REGISTRY = {
     "mtsp": MTSPEnv,
     "op": OPEnv,
     "pctsp": PCTSPEnv,
+    "cpdptw": CPDPTWEnv,
     "pdp": PDPEnv,
     "sdvrp": SDVRPEnv,
     "spctsp": SPCTSPEnv,
