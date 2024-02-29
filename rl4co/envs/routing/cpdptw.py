@@ -15,7 +15,7 @@ from rl4co.utils.ops import gather_by_index, get_tour_length, get_distance
 
 
 class CPDPTWEnv(PDPEnv):
-    """Pickup and Delivery Problem with Time Windows (PDPTW) environment.
+    """(Capacitated) Pickup and Delivery Problem with Time Windows (PDPTW) environment.
     The environment is made of num_loc + 1 locations (cities):
         - 1 depot
         - `num_loc` / 2 pickup locations
@@ -108,6 +108,91 @@ class CPDPTWEnv(PDPEnv):
             }
         )
         return td_reset
+    
+    @staticmethod
+    def get_action_mask(td: TensorDict) -> TensorDict:
+        action_mask = super().get_action_mask(td)
+        batch_size = td["locs"].shape[0]
+        current_loc = gather_by_index(td["locs"], td["current_node"]).reshape(
+            [batch_size, 2]
+        )
+        dist = get_distance(current_loc, td["locs"].transpose(0, 1)).transpose(0, 1)
+        td.update({"distances": dist})
+        can_reach_in_time = (
+            td["current_time"] + dist <= td["time_windows"][..., 1]
+        )  # I only need to start the service before the time window ends, not finish it.
+        return action_mask & can_reach_in_time
+    
+    @staticmethod
+    def _step(self, td: TensorDict) -> TensorDict:
+        """In addition to the calculations in the PDPEnv, the current time is
+        updated to keep track of which nodes are still reachable in time.
+        The current_node is updated in the parent class' _step() function.
+        """
+        batch_size = td["locs"].shape[0]
+        # update current_time
+        distance = gather_by_index(td["distances"], td["action"]).reshape([batch_size, 1])
+        duration = gather_by_index(td["durations"], td["action"]).reshape([batch_size, 1])
+        start_times = gather_by_index(td["time_windows"], td["action"])[..., 0].reshape(
+            [batch_size, 1]
+        )
+        td["current_time"] = (td["action"][:, None] != 0) * (
+            torch.max(td["current_time"] + distance, start_times) + duration
+        )
+        # current_node is updated to the selected action
+        td = super()._step(td)
+        return td
+    
+    def get_reward(self, td: TensorDict, actions: torch.TensorDict) -> torch.TensorDict:
+        return super().get_reward(td, actions)
+    
+    @staticmethod
+    def check_solution_validity(td: TensorDict, actions: torch.Tensor):
+        super().check_solution_validity(td, actions)
+        batch_size = td["locs"].shape[0]
+        # distances to depot
+        distances = get_distance(
+            td["locs"][..., 0, :], td["locs"].transpose(0, 1)
+        ).transpose(0, 1)
+        # basic checks on time windows
+        assert torch.all(distances >= 0.0), "Distances must be non-negative."
+        assert torch.all(td["time_windows"] >= 0.0), "Time windows must be non-negative."
+        assert torch.all(
+            td["time_windows"][..., :, 0] + distances + td["durations"]
+            <= td["time_windows"][..., 0, 1][0]  # max_time is the same for all batches
+        ), "vehicle cannot perform service and get back to depot in time."
+        assert torch.all(
+            td["durations"] >= 0.0
+        ), "Service durations must be non-negative."
+        assert torch.all(
+            td["time_windows"][..., 0] < td["time_windows"][..., 1]
+        ), "there are unfeasible time windows"
+        # check vehicles can meet deadlines
+        curr_time = torch.zeros(batch_size, 1, dtype=torch.float32, device=td.device)
+        curr_node = torch.zeros_like(curr_time, dtype=torch.int64, device=td.device)
+        for ii in range(actions.size(1)):
+            next_node = actions[:, ii]
+            dist = get_distance(
+                gather_by_index(td["locs"], curr_node).reshape([batch_size, 2]),
+                gather_by_index(td["locs"], next_node).reshape([batch_size, 2]),
+            ).reshape([batch_size, 1])
+            curr_time = torch.max(
+                (curr_time + dist).int(),
+                gather_by_index(td["time_windows"], next_node)[..., 0].reshape(
+                    [batch_size, 1]
+                ),
+            )
+            assert torch.all(
+                curr_time
+                <= gather_by_index(td["time_windows"], next_node)[..., 1].reshape(
+                    [batch_size, 1]
+                )
+            ), "vehicle cannot start service before deadline"
+            curr_time = curr_time + gather_by_index(td["durations"], next_node).reshape(
+                [batch_size, 1]
+            )
+            curr_node = next_node
+            curr_time[curr_node == 0] = 0.0  # reset time for depot
 
     def generate_data(self, batch_size) -> TensorDict:
         td = super().generate_data(batch_size)
@@ -187,3 +272,7 @@ class CPDPTWEnv(PDPEnv):
             }
         )
         return td
+
+    @staticmethod
+    def render(td: TensorDict, actions=None, ax=None):
+        return super().render(td=td, actions=actions, ax=ax)
