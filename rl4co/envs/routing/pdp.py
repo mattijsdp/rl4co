@@ -95,6 +95,7 @@ class PDPEnv(RL4COEnvBase):
     def _reset(self, td: Optional[TensorDict] = None, batch_size=None) -> TensorDict:
         if batch_size is None:
             batch_size = self.batch_size if td is None else td.batch_size
+        batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
         if td is None or td.is_empty():
             td = self.generate_data(batch_size=batch_size)

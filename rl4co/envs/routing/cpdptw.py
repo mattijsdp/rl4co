@@ -1,7 +1,6 @@
 from typing import Optional
 
 import torch
-
 from tensordict.tensordict import TensorDict
 from torchrl.data import (
     BoundedTensorSpec,
@@ -42,14 +41,14 @@ class CPDPTWEnv(PDPEnv):
         scale: bool = True,
         **kwargs,
     ):
-        super().__init__(**kwargs)
         self.max_loc = max_loc
         self.min_time = 0
         self.max_time = max_time
         self.scale = scale
+        super().__init__(**kwargs)
 
     def _make_spec(self, td_params: Optional[TensorDict] = None):
-        super().make_spec(td_params)
+        super()._make_spec(td_params)
 
         current_time = UnboundedContinuousTensorSpec(
             shape=(1), dtype=torch.float32, device=self.device
@@ -96,8 +95,11 @@ class CPDPTWEnv(PDPEnv):
         Returns:
             Tensor dictionary containing the initial observation
         """
+        if batch_size is None:
+            batch_size = self.batch_size if td is None else td.batch_size
+        batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
-        td_reset = super()._reset(td, batch_size)
+        td_reset = super()._reset(td=td, batch_size=batch_size)
         td_reset.update(
             {
                 "current_time": torch.zeros(
@@ -143,7 +145,7 @@ class CPDPTWEnv(PDPEnv):
         td = super()._step(td)
         return td
     
-    def get_reward(self, td: TensorDict, actions: torch.TensorDict) -> torch.TensorDict:
+    def get_reward(self, td: TensorDict, actions: TensorDict) -> TensorDict:
         return super().get_reward(td, actions)
     
     @staticmethod
