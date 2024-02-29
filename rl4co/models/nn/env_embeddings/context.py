@@ -178,7 +178,7 @@ class PDPContext(EnvContext):
         return self.project_context(cur_node_embedding)
 
 
-class CPDPTWContext(EnvContext):
+class CPDPTWContext(PDPContext):
     """Context embedding for the Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW).
     Project the following to the embedding space:
         - current node embedding

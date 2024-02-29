@@ -241,14 +241,33 @@ class CPDPTWInitEmbedding(PDPInitEmbedding):
 
     def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 5):
         # node_dim = 5: x, y, (6 with demand), tw start, tw end, service time
-        super(PDPInitEmbedding, self).__init__(embedding_dim, linear_bias, node_dim)
+        super().__init__(embedding_dim, linear_bias, node_dim)
 
     def forward(self, td):
-        embeddings =  super().forward(td)
-        durations = td["durations"][..., 1:]
+        depot, locs = td["locs"][..., 0:1, :], td["locs"][..., 1:, :]
+        num_locs = locs.size(-2)
         time_windows = td["time_windows"][..., 1:, :]
+        durations = td["durations"][..., 1:]
+        pick_feats = torch.cat(
+            [locs[:, : num_locs // 2, :],
+             locs[:, num_locs // 2 :, :],
+             time_windows[:, : num_locs // 2, :],
+             time_windows[:, num_locs // 2 :, :],
+             durations[:, : num_locs // 2, None],
+             durations[:, num_locs // 2 :, None]],
+             -1
+        )  # [batch_size, graph_size//2, 4]
+        delivery_feats = torch.cat(
+            [locs[:, num_locs // 2 :, :],  # [batch_size, graph_size // 2, 2]
+            time_windows[:, num_locs // 2 :, :],
+            durations[:, num_locs // 2 :, None]],
+            -1
+        )
+        depot_embeddings = self.init_embed_depot(depot)
+        pick_embeddings = self.init_embed_pick(pick_feats)
+        delivery_embeddings = self.init_embed_delivery(delivery_feats)
         # concatenate on graph size dimension
-        return torch.cat([embeddings, durations, time_windows], -3)  # not sure about this line
+        return torch.cat([depot_embeddings, pick_embeddings, delivery_embeddings], -2)
 
 
 class MTSPInitEmbedding(nn.Module):
