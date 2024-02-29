@@ -178,7 +178,7 @@ class PDPContext(EnvContext):
         return self.project_context(cur_node_embedding)
 
 
-class CPDPTWContext(PDPContext):
+class CPDPTWContext(EnvContext):
     """Context embedding for the Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW).
     Project the following to the embedding space:
         - current node embedding
@@ -187,11 +187,9 @@ class CPDPTWContext(PDPContext):
     """
 
     def __init__(self, embedding_dim):
-        super(PDPContext, self).__init__(embedding_dim, embedding_dim)
-
-    def forward(self, embeddings, td):
-        cur_node_embedding = self._cur_node_embedding(embeddings, td).squeeze()
-        return self.project_context(cur_node_embedding)
+        super(CPDPTWContext, self).__init__(
+            embedding_dim=embedding_dim, step_context_dim=embedding_dim + 1
+        )
 
     def _state_embedding(self, td):
         return td["current_time"]
