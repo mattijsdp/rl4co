@@ -54,7 +54,6 @@ class PDPEnv(RL4COEnvBase):
 
         return action_mask
 
-    @staticmethod
     def _step(self, td: TensorDict) -> TensorDict:
         current_node = td["action"].unsqueeze(-1)
 
@@ -133,17 +132,16 @@ class PDPEnv(RL4COEnvBase):
         )
         i = torch.zeros((*batch_size, 1), dtype=torch.int64, device=self.device)
 
-        return TensorDict(
-            {
-                "locs": locs,
-                "current_node": current_node,
-                "to_deliver": to_deliver,
-                "available": available,
-                "i": i,
-                "action_mask": action_mask,
-            },
-            batch_size=batch_size,
-        )
+        td.update({
+            "locs": locs,
+            "current_node": current_node,
+            "to_deliver": to_deliver,
+            "available": available,
+            "i": i,
+            "action_mask": action_mask,
+        })
+
+        return td
 
     def _make_spec(self, td_params: TensorDict):
         """Make the observation and action specs from the parameters."""

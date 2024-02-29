@@ -99,8 +99,8 @@ class CPDPTWEnv(PDPEnv):
             batch_size = self.batch_size if td is None else td.batch_size
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
-        td_reset = super()._reset(td=td, batch_size=batch_size)
-        td_reset.update(
+        td = super()._reset(td=td, batch_size=batch_size)
+        td.update(
             {
                 "current_time": torch.zeros(
                     *batch_size, 1, dtype=torch.float32, device=self.device
@@ -109,11 +109,12 @@ class CPDPTWEnv(PDPEnv):
                 "time_windows": td["time_windows"],
             }
         )
-        return td_reset
+        return td
     
     @staticmethod
     def get_action_mask(td: TensorDict) -> TensorDict:
-        action_mask = super().get_action_mask(td)
+        action_mask = super(CPDPTWEnv, CPDPTWEnv).get_action_mask(td)
+
         batch_size = td["locs"].shape[0]
         current_loc = gather_by_index(td["locs"], td["current_node"]).reshape(
             [batch_size, 2]
@@ -125,7 +126,6 @@ class CPDPTWEnv(PDPEnv):
         )  # I only need to start the service before the time window ends, not finish it.
         return action_mask & can_reach_in_time
     
-    @staticmethod
     def _step(self, td: TensorDict) -> TensorDict:
         """In addition to the calculations in the PDPEnv, the current time is
         updated to keep track of which nodes are still reachable in time.
@@ -271,10 +271,11 @@ class CPDPTWEnv(PDPEnv):
             {
                 "durations": durations,
                 "time_windows": time_windows,
+                "distances": dist,
             }
         )
         return td
 
     @staticmethod
     def render(td: TensorDict, actions=None, ax=None):
-        return super().render(td=td, actions=actions, ax=ax)
+        return PDPEnv.render(td=td, actions=actions, ax=ax)
