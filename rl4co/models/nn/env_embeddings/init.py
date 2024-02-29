@@ -15,6 +15,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPInitEmbedding,
         "atsp": TSPInitEmbedding,
         "cvrp": VRPInitEmbedding,
+        "cpdptw": CPDPTWInitEmbedding,
         "sdvrp": VRPInitEmbedding,
         "pctsp": PCTSPInitEmbedding,
         "spctsp": PCTSPInitEmbedding,
@@ -207,9 +208,10 @@ class PDPInitEmbedding(nn.Module):
            Note that pickups and deliveries are interleaved in the input.
     """
 
-    def __init__(self, embedding_dim, linear_bias=True):
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 2):
+        # node_dim = 2  # x, y
         super(PDPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
+
         self.init_embed_depot = nn.Linear(2, embedding_dim, linear_bias)
         self.init_embed_pick = nn.Linear(node_dim * 2, embedding_dim, linear_bias)
         self.init_embed_delivery = nn.Linear(node_dim, embedding_dim, linear_bias)
@@ -226,6 +228,27 @@ class PDPInitEmbedding(nn.Module):
         delivery_embeddings = self.init_embed_delivery(delivery_feats)
         # concatenate on graph size dimension
         return torch.cat([depot_embeddings, pick_embeddings, delivery_embeddings], -2)
+
+
+class CPDPTWInitEmbedding(PDPInitEmbedding):
+    """Initial embedding for the (Capacitated) Pickup and Delivery Problem with Time Windows (CPDPTW).
+    Embed the following node features to the embedding space:
+        - locs: x, y coordinates of the nodes (depot, pickups and deliveries separately)
+           Note that pickups and deliveries are interleaved in the input.
+        - remaining capacity (vehicle_capacity - used_capacity)
+        - current time
+    """
+
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 5):
+        # node_dim = 5: x, y, (6 with demand), tw start, tw end, service time
+        super(PDPInitEmbedding, self).__init__(embedding_dim, linear_bias, node_dim)
+
+    def forward(self, td):
+        embeddings =  super().forward(td)
+        durations = td["durations"][..., 1:]
+        time_windows = td["time_windows"][..., 1:, :]
+        # concatenate on graph size dimension
+        return torch.cat([embeddings, durations, time_windows], -3)  # not sure about this line
 
 
 class MTSPInitEmbedding(nn.Module):
