@@ -32,7 +32,7 @@ class CPDPTWEnv(PDPEnv):
         device: device to use.  Generally, no need to set as tensors are updated on the fly
     """
 
-    name = "pdptw"
+    name = "cpdptw"
 
     def __init__(
         self,
