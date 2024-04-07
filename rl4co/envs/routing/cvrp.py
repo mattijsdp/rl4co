@@ -348,30 +348,70 @@ class CVRPEnv(RL4COEnvBase):
         # Cat the first node to the end to complete the tour
         x, y = locs[:, 0], locs[:, 1]
 
-        # plot depot
-        ax.scatter(
-            locs[0, 0],
-            locs[0, 1],
-            edgecolors=cm.Set2(2),
-            facecolors="none",
-            s=100,
-            linewidths=2,
-            marker="s",
-            alpha=1,
-        )
+        if plot_depot:
+            # plot depot
+            ax.scatter(
+                locs[0, 0],
+                locs[0, 1],
+                edgecolors=cm.Set2(2),
+                facecolors="none",
+                s=100,
+                linewidths=2,
+                marker="s",
+                alpha=1,
+            )
 
-        # plot visited nodes
-        ax.scatter(
-            x[1:],
-            y[1:],
-            edgecolors=cm.Set2(0),
-            facecolors="none",
-            s=50,
-            linewidths=2,
-            marker="o",
-            alpha=1,
-        )
+        if plot_nodes:
+            # plot nodes
+            ax.scatter(
+                x[1:],
+                y[1:],
+                edgecolors=cm.Set2(0),
+                facecolors="none",
+                s=50,
+                linewidths=2,
+                marker="o",
+                alpha=1,
+            )
+            # plot visited nodes
+            ax.scatter(
+                x[1:],
+                y[1:],
+                edgecolors=cm.Set2(0),
+                facecolors="none",
+                s=50,
+                linewidths=2,
+                marker="o",
+                alpha=1,
+            )
 
+<<<<<<< HEAD
+        if plot_demand_bars:
+            # plot demand bars
+            for node_idx in range(1, len(locs)):
+                ax.add_patch(
+                    plt.Rectangle(
+                        (locs[node_idx, 0] - 0.005, locs[node_idx, 1] + 0.015),
+                        0.01,
+                        demands[node_idx - 1] / (scale * 10),
+                        edgecolor=cm.Set2(0),
+                        facecolor=cm.Set2(0),
+                        fill=True,
+                    )
+                )
+
+        if plot_demand:
+            # text demand
+            for node_idx in range(1, len(locs)):
+                ax.text(
+                    locs[node_idx, 0],
+                    locs[node_idx, 1] - 0.025,
+                    f"{demands[node_idx-1].item():.2f}",
+                    horizontalalignment="center",
+                    verticalalignment="top",
+                    fontsize=10,
+                    color=cm.Set2(0),
+=======
         # plot demand bars
         for node_idx in range(1, len(locs)):
             ax.add_patch(
@@ -382,53 +422,43 @@ class CVRPEnv(RL4COEnvBase):
                     edgecolor=cm.Set2(0),
                     facecolor=cm.Set2(0),
                     fill=True,
+>>>>>>> fd350a8413b67be7b825c316b662cffa706913ad
                 )
-            )
 
-        # text demand
-        for node_idx in range(1, len(locs)):
+        if plot_depot:
+            # text depot
             ax.text(
-                locs[node_idx, 0],
-                locs[node_idx, 1] - 0.025,
-                f"{demands[node_idx-1].item():.2f}",
+                locs[0, 0],
+                locs[0, 1] - 0.025,
+                "Depot",
                 horizontalalignment="center",
                 verticalalignment="top",
                 fontsize=10,
-                color=cm.Set2(0),
+                color=cm.Set2(2),
             )
 
-        # text depot
-        ax.text(
-            locs[0, 0],
-            locs[0, 1] - 0.025,
-            "Depot",
-            horizontalalignment="center",
-            verticalalignment="top",
-            fontsize=10,
-            color=cm.Set2(2),
-        )
-
-        # plot actions
-        color_idx = 0
-        for action_idx in range(len(actions) - 1):
-            if actions[action_idx] == 0:
-                color_idx += 1
-            from_loc = locs[actions[action_idx]]
-            to_loc = locs[actions[action_idx + 1]]
-            ax.plot(
-                [from_loc[0], to_loc[0]],
-                [from_loc[1], to_loc[1]],
-                color=out(color_idx),
-                lw=1,
-            )
-            ax.annotate(
-                "",
-                xy=(to_loc[0], to_loc[1]),
-                xytext=(from_loc[0], from_loc[1]),
-                arrowprops=dict(arrowstyle="-|>", color=out(color_idx)),
-                size=15,
-                annotation_clip=False,
-            )
+        if plot_actions:
+            # plot actions
+            color_idx = 0
+            for action_idx in range(len(actions) - 1):
+                if actions[action_idx] == 0:
+                    color_idx += 1
+                from_loc = locs[actions[action_idx]]
+                to_loc = locs[actions[action_idx + 1]]
+                ax.plot(
+                    [from_loc[0], to_loc[0]],
+                    [from_loc[1], to_loc[1]],
+                    color=out(color_idx),
+                    lw=1,
+                )
+                ax.annotate(
+                    "",
+                    xy=(to_loc[0], to_loc[1]),
+                    xytext=(from_loc[0], from_loc[1]),
+                    arrowprops=dict(arrowstyle="-|>", color=out(color_idx)),
+                    size=15,
+                    annotation_clip=False,
+                )
 
         # Setup limits and show
         if scale_xy:

@@ -18,6 +18,7 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
         "atsp": TSPInitEmbedding,
         "matnet": MatNetInitEmbedding,
         "cvrp": VRPInitEmbedding,
+        "cpdptw": CPDPTWInitEmbedding,
         "cvrptw": VRPTWInitEmbedding,
         "svrp": SVRPInitEmbedding,
         "sdvrp": VRPInitEmbedding,
@@ -295,9 +296,10 @@ class PDPInitEmbedding(nn.Module):
            Note that pickups and deliveries are interleaved in the input.
     """
 
-    def __init__(self, embedding_dim, linear_bias=True):
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 2):
+        # node_dim = 2  # x, y
         super(PDPInitEmbedding, self).__init__()
-        node_dim = 2  # x, y
+
         self.init_embed_depot = nn.Linear(2, embedding_dim, linear_bias)
         self.init_embed_pick = nn.Linear(node_dim * 2, embedding_dim, linear_bias)
         self.init_embed_delivery = nn.Linear(node_dim, embedding_dim, linear_bias)
@@ -309,6 +311,48 @@ class PDPInitEmbedding(nn.Module):
             [locs[:, : num_locs // 2, :], locs[:, num_locs // 2 :, :]], -1
         )  # [batch_size, graph_size//2, 4]
         delivery_feats = locs[:, num_locs // 2 :, :]  # [batch_size, graph_size//2, 2]
+        depot_embeddings = self.init_embed_depot(depot)
+        pick_embeddings = self.init_embed_pick(pick_feats)
+        delivery_embeddings = self.init_embed_delivery(delivery_feats)
+        # concatenate on graph size dimension
+        return torch.cat([depot_embeddings, pick_embeddings, delivery_embeddings], -2)
+
+
+class CPDPTWInitEmbedding(PDPInitEmbedding):
+    """Initial embedding for the (Capacitated) Pickup and Delivery Problem with Time Windows (CPDPTW).
+    Embed the following node features to the embedding space:
+        - locs: x, y coordinates of the nodes (depot, pickups and deliveries separately)
+           Note that pickups and deliveries are interleaved in the input.
+        - remaining capacity (vehicle_capacity - used_capacity)
+        - current time
+    """
+
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 5):
+        # node_dim = 5: x, y, (6 with demand), tw start, tw end, service time
+        super().__init__(embedding_dim, linear_bias, node_dim)
+
+    def forward(self, td):
+        depot, locs = td["locs"][..., 0:1, :], td["locs"][..., 1:, :]
+        num_locs = locs.size(-2)
+        time_windows = td["time_windows"][..., 1:, :]
+        durations = td["durations"][..., 1:]
+        pick_feats = torch.cat(
+            [
+                locs[:, : num_locs // 2, :],
+                locs[:, num_locs // 2 :, :],
+                time_windows[:, : num_locs // 2, :],
+                time_windows[:, num_locs // 2 :, :],
+                durations[:, : num_locs // 2, None],
+                durations[:, num_locs // 2 :, None]
+            ],
+             -1
+        )  # [batch_size, graph_size//2, 4]
+        delivery_feats = torch.cat(
+            [locs[:, num_locs // 2 :, :],  # [batch_size, graph_size // 2, 2]
+            time_windows[:, num_locs // 2 :, :],
+            durations[:, num_locs // 2 :, None]],
+            -1
+        )
         depot_embeddings = self.init_embed_depot(depot)
         pick_embeddings = self.init_embed_pick(pick_feats)
         delivery_embeddings = self.init_embed_delivery(delivery_feats)

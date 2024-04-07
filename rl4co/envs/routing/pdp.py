@@ -47,7 +47,14 @@ class PDPEnv(RL4COEnvBase):
         self._make_spec(td_params)
 
     @staticmethod
-    def _step(td: TensorDict) -> TensorDict:
+    def get_action_mask(td: TensorDict) -> TensorDict:
+        # Action is feasible if the node is not visited and is to deliver
+        # action_mask = torch.logical_and(available, to_deliver)
+        action_mask = td["available"] & td["to_deliver"]
+
+        return action_mask
+
+    def _step(self, td: TensorDict) -> TensorDict:
         current_node = td["action"].unsqueeze(-1)
 
         num_loc = td["locs"].shape[-2] - 1  # except depot
@@ -64,10 +71,6 @@ class PDPEnv(RL4COEnvBase):
             -1, new_to_deliver.expand_as(td["to_deliver"]), 1
         )
 
-        # Action is feasible if the node is not visited and is to deliver
-        # action_mask = torch.logical_and(available, to_deliver)
-        action_mask = available & to_deliver
-
         # We are done there are no unvisited locations
         done = torch.count_nonzero(available, dim=-1) == 0
 
@@ -81,11 +84,11 @@ class PDPEnv(RL4COEnvBase):
                 "available": available,
                 "to_deliver": to_deliver,
                 "i": td["i"] + 1,
-                "action_mask": action_mask,
                 "reward": reward,
                 "done": done,
             }
         )
+        td.set("action_mask", self.get_action_mask(td))
         return td
 
     def _reset(self, td: Optional[TensorDict] = None, batch_size=None) -> TensorDict:
@@ -176,8 +179,16 @@ class PDPEnv(RL4COEnvBase):
         self.reward_spec = UnboundedContinuousTensorSpec(shape=(1,))
         self.done_spec = UnboundedDiscreteTensorSpec(shape=(1,), dtype=torch.bool)
 
+    def get_reward(self, td: TensorDict, actions: TensorDict) -> TensorDict:
+        if self.check_solution:
+            self.check_solution_validity(td, actions)
+
+        # Gather locations in the order of actions and get reward = -(total distance)
+        locs_ordered = gather_by_index(td["locs"], actions)  # [batch, graph_size+1, 2]
+        return -get_tour_length(locs_ordered)
+    
     @staticmethod
-    def get_reward(td, actions) -> TensorDict:
+    def check_solution_validity(td: TensorDict, actions: torch.Tensor):
         # assert (actions[:, 0] == 0).all(), "Not starting at depot"
         assert (
             torch.arange(actions.size(1), out=actions.data.new())
@@ -193,10 +204,6 @@ class PDPEnv(RL4COEnvBase):
             visited_time[:, 1 : actions.size(1) // 2 + 1]
             < visited_time[:, actions.size(1) // 2 + 1 :]
         ).all(), "Deliverying without pick-up"
-
-        # Gather locations in the order of actions and get reward = -(total distance)
-        locs_ordered = gather_by_index(td["locs"], actions)  # [batch, graph_size+1, 2]
-        return -get_tour_length(locs_ordered)
 
     def generate_data(self, batch_size) -> TensorDict:
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size

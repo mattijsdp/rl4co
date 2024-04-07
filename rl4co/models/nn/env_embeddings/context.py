@@ -19,6 +19,7 @@ def env_context_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": TSPContext,
         "atsp": TSPContext,
         "cvrp": VRPContext,
+        "cpdptw": CPDPTWContext,
         "cvrptw": VRPTWContext,
         "ffsp": FFSPContext,
         "svrp": SVRPContext,
@@ -249,6 +250,23 @@ class PDPContext(EnvContext):
     def forward(self, embeddings, td):
         cur_node_embedding = self._cur_node_embedding(embeddings, td).squeeze()
         return self.project_context(cur_node_embedding)
+
+
+class CPDPTWContext(EnvContext):
+    """Context embedding for the Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW).
+    Project the following to the embedding space:
+        - current node embedding
+        - remaining capacity (vehicle_capacity - used_capacity)
+        - current time
+    """
+
+    def __init__(self, embedding_dim):
+        super(CPDPTWContext, self).__init__(
+            embedding_dim=embedding_dim, step_context_dim=embedding_dim + 1
+        )
+
+    def _state_embedding(self, embeddings, td):
+        return td["current_time"]
 
 
 class MTSPContext(EnvContext):

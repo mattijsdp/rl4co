@@ -18,6 +18,7 @@ def env_dynamic_embedding(env_name: str, config: dict) -> nn.Module:
         "tsp": StaticEmbedding,
         "atsp": StaticEmbedding,
         "cvrp": StaticEmbedding,
+        "cpdptw": StaticEmbedding,
         "cvrptw": StaticEmbedding,
         "ffsp": StaticEmbedding,
         "svrp": StaticEmbedding,
