@@ -32,7 +32,7 @@ class CPDPTWEnv(PDPEnv):
         device: device to use.  Generally, no need to set as tensors are updated on the fly
     """
 
-    name = "pdptw"
+    name = "cpdptw"
 
     def __init__(
         self,
@@ -99,20 +99,62 @@ class CPDPTWEnv(PDPEnv):
             batch_size = self.batch_size if td is None else td.batch_size
         batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
-        td = super()._reset(td=td, batch_size=batch_size)
-        td.update(
+        if td is None or td.is_empty():
+            td = self.generate_data(batch_size=batch_size)
+
+        self.to(td.device)
+
+        locs = torch.cat((td["depot"][:, None, :], td["locs"]), -2)
+
+        # Pick is 1, deliver is 0 [batch_size, graph_size+1], [1,1...1, 0...0]
+        to_deliver = torch.cat(
+            [
+                torch.ones(
+                    *batch_size,
+                    self.num_loc // 2 + 1,
+                    dtype=torch.bool,
+                    device=self.device,
+                ),
+                torch.zeros(
+                    *batch_size, self.num_loc // 2, dtype=torch.bool, device=self.device
+                ),
+            ],
+            dim=-1,
+        )
+
+        # Cannot visit depot at first step # [0,1...1] so set not available
+        available = torch.ones(
+            (*batch_size, self.num_loc + 1), dtype=torch.bool, device=self.device
+        )
+        action_mask = ~available.contiguous()  # [batch_size, graph_size+1]
+        action_mask[..., 0] = 1  # First step is always the depot
+
+        # Other variables
+        current_node = torch.zeros(
+            (*batch_size, 1), dtype=torch.int64, device=self.device
+        )
+        i = torch.zeros((*batch_size, 1), dtype=torch.int64, device=self.device)
+
+        return TensorDict(
             {
+                "locs": locs,
+                "current_node": current_node,
+                "to_deliver": to_deliver,
+                "available": available,
+                "i": i,
+                "action_mask": action_mask,
                 "current_time": torch.zeros(
                     *batch_size, 1, dtype=torch.float32, device=self.device
                 ),
                 "durations": td["durations"],
                 "time_windows": td["time_windows"],
-            }
+                "distances": td["distances"],
+            },
+            batch_size=batch_size,
         )
-        return td
     
-    @staticmethod
-    def get_action_mask(td: TensorDict) -> TensorDict:
+    # @staticmethod
+    def get_action_mask(self, td: TensorDict) -> TensorDict:
         action_mask = super(CPDPTWEnv, CPDPTWEnv).get_action_mask(td)
 
         batch_size = td["locs"].shape[0]
@@ -146,10 +188,12 @@ class CPDPTWEnv(PDPEnv):
         return td
     
     def get_reward(self, td: TensorDict, actions: TensorDict) -> TensorDict:
-        return super().get_reward(td, actions)
+        print("reward")
+        return torch.randn(td.batch_size, device=td.device, dtype=torch.float32)
+        # return super().get_reward(td, actions)
     
-    @staticmethod
-    def check_solution_validity(td: TensorDict, actions: torch.Tensor):
+    # @staticmethod
+    def check_solution_validity(self, td: TensorDict, actions: torch.Tensor):
         super().check_solution_validity(td, actions)
         batch_size = td["locs"].shape[0]
         # distances to depot

@@ -191,7 +191,7 @@ class CPDPTWContext(EnvContext):
             embedding_dim=embedding_dim, step_context_dim=embedding_dim + 1
         )
 
-    def _state_embedding(self, td):
+    def _state_embedding(self, embeddings, td):
         return td["current_time"]
 
 

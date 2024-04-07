@@ -249,12 +249,14 @@ class CPDPTWInitEmbedding(PDPInitEmbedding):
         time_windows = td["time_windows"][..., 1:, :]
         durations = td["durations"][..., 1:]
         pick_feats = torch.cat(
-            [locs[:, : num_locs // 2, :],
-             locs[:, num_locs // 2 :, :],
-             time_windows[:, : num_locs // 2, :],
-             time_windows[:, num_locs // 2 :, :],
-             durations[:, : num_locs // 2, None],
-             durations[:, num_locs // 2 :, None]],
+            [
+                locs[:, : num_locs // 2, :],
+                locs[:, num_locs // 2 :, :],
+                time_windows[:, : num_locs // 2, :],
+                time_windows[:, num_locs // 2 :, :],
+                durations[:, : num_locs // 2, None],
+                durations[:, num_locs // 2 :, None]
+            ],
              -1
         )  # [batch_size, graph_size//2, 4]
         delivery_feats = torch.cat(

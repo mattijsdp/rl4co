@@ -94,7 +94,6 @@ class PDPEnv(RL4COEnvBase):
     def _reset(self, td: Optional[TensorDict] = None, batch_size=None) -> TensorDict:
         if batch_size is None:
             batch_size = self.batch_size if td is None else td.batch_size
-        batch_size = [batch_size] if isinstance(batch_size, int) else batch_size
 
         if td is None or td.is_empty():
             td = self.generate_data(batch_size=batch_size)
@@ -132,16 +131,17 @@ class PDPEnv(RL4COEnvBase):
         )
         i = torch.zeros((*batch_size, 1), dtype=torch.int64, device=self.device)
 
-        td.update({
-            "locs": locs,
-            "current_node": current_node,
-            "to_deliver": to_deliver,
-            "available": available,
-            "i": i,
-            "action_mask": action_mask,
-        })
-
-        return td
+        return TensorDict(
+            {
+                "locs": locs,
+                "current_node": current_node,
+                "to_deliver": to_deliver,
+                "available": available,
+                "i": i,
+                "action_mask": action_mask,
+            },
+            batch_size=batch_size,
+        )
 
     def _make_spec(self, td_params: TensorDict):
         """Make the observation and action specs from the parameters."""
