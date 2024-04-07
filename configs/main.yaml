@@ -5,11 +5,11 @@
 defaults:
   - _self_
   - callbacks: default.yaml
+  - hydra: default.yaml # having hydra before logger in precedence order, so that logger can override run.dir
   - logger: null # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default.yaml
   - paths: default.yaml
   - extras: default.yaml
-  - hydra: default.yaml
   - model: default.yaml
   - env: default.yaml
 
@@ -54,13 +54,12 @@ seed: null
 #https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
 matmul_precision: "medium"
 
-# metrics to be logged
-metrics:
-  train: ["loss", "reward"]
-  val: ["reward"]
-  test: ["reward"]
-  log_on_step: True
-
 # Set to True to generate data automatically on the first run
 model:
   generate_default_data: True
+  # metrics to be logged
+  metrics:
+    train: ["loss", "reward"]
+    val: ["reward"]
+    test: ["reward"]
+    log_on_step: True

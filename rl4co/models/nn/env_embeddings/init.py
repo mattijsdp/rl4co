@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from tensordict.tensordict import TensorDict
+
 
 def env_init_embedding(env_name: str, config: dict) -> nn.Module:
     """Get environment initial embedding. The init embedding is used to initialize the
@@ -14,8 +16,11 @@ def env_init_embedding(env_name: str, config: dict) -> nn.Module:
     embedding_registry = {
         "tsp": TSPInitEmbedding,
         "atsp": TSPInitEmbedding,
+        "matnet": MatNetInitEmbedding,
         "cvrp": VRPInitEmbedding,
         "cpdptw": CPDPTWInitEmbedding,
+        "cvrptw": VRPTWInitEmbedding,
+        "svrp": SVRPInitEmbedding,
         "sdvrp": VRPInitEmbedding,
         "pctsp": PCTSPInitEmbedding,
         "spctsp": PCTSPInitEmbedding,
@@ -51,6 +56,50 @@ class TSPInitEmbedding(nn.Module):
         return out
 
 
+class MatNetInitEmbedding(nn.Module):
+    """
+    Preparing the initial row and column embeddings for FFSP.
+
+    Reference:
+    https://github.com/yd-kwon/MatNet/blob/782698b60979effe2e7b61283cca155b7cdb727f/ATSP/ATSP_MatNet/ATSPModel.py#L51
+
+
+    """
+
+    def __init__(self, embedding_dim: int, mode: str = "RandomOneHot") -> None:
+        super().__init__()
+
+        self.embedding_dim = embedding_dim
+        assert mode in {
+            "RandomOneHot",
+            "Random",
+        }, "mode must be one of ['RandomOneHot', 'Random']"
+        self.mode = mode
+
+    def forward(self, td: TensorDict):
+        dmat = td["cost_matrix"]
+        b, r, c = dmat.shape
+
+        row_emb = torch.zeros(b, r, self.embedding_dim, device=dmat.device)
+
+        if self.mode == "RandomOneHot":
+            # MatNet uses one-hot encoding for column embeddings
+            # https://github.com/yd-kwon/MatNet/blob/782698b60979effe2e7b61283cca155b7cdb727f/ATSP/ATSP_MatNet/ATSPModel.py#L60
+            col_emb = torch.zeros(b, c, self.embedding_dim, device=dmat.device)
+            rand = torch.rand(b, c)
+            rand_idx = rand.argsort(dim=1)
+            b_idx = torch.arange(b)[:, None].expand(b, c)
+            n_idx = torch.arange(c)[None, :].expand(b, c)
+            col_emb[b_idx, n_idx, rand_idx] = 1.0
+
+        elif self.mode == "Random":
+            col_emb = torch.rand(b, r, self.embedding_dim, device=dmat.device)
+        else:
+            raise NotImplementedError
+
+        return row_emb, col_emb, dmat
+
+
 class VRPInitEmbedding(nn.Module):
     """Initial embedding for the Vehicle Routing Problems (VRP).
     Embed the following node features to the embedding space:
@@ -58,9 +107,9 @@ class VRPInitEmbedding(nn.Module):
         - demand: demand of the customers
     """
 
-    def __init__(self, embedding_dim, linear_bias=True):
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 3):
         super(VRPInitEmbedding, self).__init__()
-        node_dim = 3  # x, y, demand
+        node_dim = node_dim  # 3: x, y, demand
         self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
         self.init_embed_depot = nn.Linear(
             2, embedding_dim, linear_bias
@@ -74,6 +123,45 @@ class VRPInitEmbedding(nn.Module):
         node_embeddings = self.init_embed(
             torch.cat((cities, td["demand"][..., None]), -1)
         )
+        # [batch, n_city+1, embedding_dim]
+        out = torch.cat((depot_embedding, node_embeddings), -2)
+        return out
+
+
+class VRPTWInitEmbedding(VRPInitEmbedding):
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 6):
+        # node_dim = 6: x, y, demand, tw start, tw end, service time
+        super(VRPTWInitEmbedding, self).__init__(embedding_dim, linear_bias, node_dim)
+
+    def forward(self, td):
+        depot, cities = td["locs"][:, :1, :], td["locs"][:, 1:, :]
+        durations = td["durations"][..., 1:]
+        time_windows = td["time_windows"][..., 1:, :]
+        # embeddings
+        depot_embedding = self.init_embed_depot(depot)
+        node_embeddings = self.init_embed(
+            torch.cat(
+                (cities, td["demand"][..., None], time_windows, durations[..., None]), -1
+            )
+        )
+        return torch.cat((depot_embedding, node_embeddings), -2)
+
+
+class SVRPInitEmbedding(nn.Module):
+    def __init__(self, embedding_dim, linear_bias=True, node_dim: int = 3):
+        super(SVRPInitEmbedding, self).__init__()
+        node_dim = node_dim  # 3: x, y, skill
+        self.init_embed = nn.Linear(node_dim, embedding_dim, linear_bias)
+        self.init_embed_depot = nn.Linear(
+            2, embedding_dim, linear_bias
+        )  # depot embedding
+
+    def forward(self, td):
+        # [batch, 1, 2]-> [batch, 1, embedding_dim]
+        depot, cities = td["locs"][:, :1, :], td["locs"][:, 1:, :]
+        depot_embedding = self.init_embed_depot(depot)
+        # [batch, n_city, 2, batch, n_city, 1]  -> [batch, n_city, embedding_dim]
+        node_embeddings = self.init_embed(torch.cat((cities, td["skills"]), -1))
         # [batch, n_city+1, embedding_dim]
         out = torch.cat((depot_embedding, node_embeddings), -2)
         return out

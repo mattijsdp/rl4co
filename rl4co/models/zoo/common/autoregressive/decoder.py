@@ -14,7 +14,7 @@ from rl4co.models.nn.dec_strategies import DecodingStrategy, get_decoding_strate
 from rl4co.models.nn.env_embeddings import env_context_embedding, env_dynamic_embedding
 from rl4co.models.nn.env_embeddings.dynamic import StaticEmbedding
 from rl4co.models.nn.utils import get_log_likelihood
-from rl4co.utils.ops import batchify, select_start_nodes, unbatchify
+from rl4co.utils.ops import batchify, unbatchify
 from rl4co.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -45,14 +45,13 @@ class AutoregressiveDecoder(nn.Module):
         We suppose environments in the `done` state are still available for sampling. This is because in NCO we need to
         wait for all the environments to reach a terminal state before we can stop the decoding process. This is in
         contrast with the TorchRL framework (at the moment) where the `env.rollout` function automatically resets.
-        You may follow tighter integration with TorchRL here: https://github.com/kaist-silab/rl4co/issues/72.
+        You may follow tighter integration with TorchRL here: https://github.com/ai4co/rl4co/issues/72.
 
     Args:
         env_name: environment name to solve
         embedding_dim: Dimension of the embeddings
         num_heads: Number of heads for the attention
         use_graph_context: Whether to use the initial graph context to modify the query
-        select_start_nodes_fn: Function to select the start nodes for multi-start decoding
         linear_bias: Whether to use a bias in the linear projection of the embeddings
         context_embedding: Module to compute the context embedding. If None, the default is used
         dynamic_embedding: Module to compute the dynamic embedding. If None, the default is used
@@ -60,11 +59,10 @@ class AutoregressiveDecoder(nn.Module):
 
     def __init__(
         self,
-        env_name: [str, RL4COEnvBase],
+        env_name: Union[str, RL4COEnvBase],
         embedding_dim: int,
         num_heads: int,
         use_graph_context: bool = True,
-        select_start_nodes_fn: callable = select_start_nodes,
         linear_bias: bool = False,
         context_embedding: nn.Module = None,
         dynamic_embedding: nn.Module = None,
@@ -109,10 +107,6 @@ class AutoregressiveDecoder(nn.Module):
             embedding_dim, num_heads, **logit_attn_kwargs
         )
 
-        self.select_start_nodes_fn = select_start_nodes_fn
-
-        self.decode_strategy = None
-
     def forward(
         self,
         td: TensorDict,
@@ -154,19 +148,22 @@ class AutoregressiveDecoder(nn.Module):
         # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
         cached_embeds = self._precompute_cache(embeddings, td=td)
 
-        # setup decoding strategy
-        self.decode_strategy: DecodingStrategy = get_decoding_strategy(
+        # Setup decoding strategy
+        decode_strategy: DecodingStrategy = get_decoding_strategy(
             decode_type, **strategy_kwargs
         )
-        td, env, num_starts = self.decode_strategy.pre_decoder_hook(td, env)
+
+        # Pre-decoding hook: used for the initial step(s) of the decoding strategy
+        td, env, num_starts = decode_strategy.pre_decoder_hook(td, env)
 
         # Main decoding: loop until all sequences are done
         while not td["done"].all():
             log_p, mask = self._get_log_p(cached_embeds, td, softmax_temp, num_starts)
-            td = self.decode_strategy.step(log_p, mask, td)
+            td = decode_strategy.step(log_p, mask, td)
             td = env.step(td)["next"]
 
-        outputs, actions, td, env = self.decode_strategy.post_decoder_hook(td, env)
+        # Post-decoding hook: used for the final step(s) of the decoding strategy
+        outputs, actions, td, env = decode_strategy.post_decoder_hook(td, env)
 
         if calc_reward:
             td.set("reward", env.get_reward(td, actions))

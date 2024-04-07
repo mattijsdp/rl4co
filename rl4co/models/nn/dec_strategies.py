@@ -5,7 +5,7 @@ import torch
 from tensordict.tensordict import TensorDict
 
 from rl4co.envs import RL4COEnvBase
-from rl4co.utils.ops import batchify, get_num_starts, select_start_nodes
+from rl4co.utils.ops import batchify
 from rl4co.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -32,24 +32,40 @@ def get_decoding_strategy(decoding_strategy, **config):
 
 
 class DecodingStrategy:
+    """Base class for decoding strategies. Subclasses should implement the :meth:`_step` method.
+    Includes hooks for pre and post main decoding operations.
+
+    Args:
+        multistart (bool, optional): Whether to use multistart decoding. Defaults to False.
+        num_starts (int, optional): Number of starts for multistart decoding. Defaults to None.
+    """
+
     name = "base"
 
-    def __init__(self, multistart=False, num_starts=None, **kwargs) -> None:
+    def __init__(
+        self,
+        multistart=False,
+        num_starts=None,
+        select_start_nodes_fn: callable = None,
+        **kwargs,
+    ) -> None:
         self.actions = []
         self.logp = []
         self.multistart = multistart
         self.num_starts = num_starts
+        self.select_start_nodes_fn = select_start_nodes_fn
 
     def _step(
-        self, logp: torch.Tensor, td: TensorDict, **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, logp: torch.Tensor, mask: torch.Tensor, td: TensorDict, **kwargs
+    ) -> Tuple[torch.Tensor, torch.Tensor, TensorDict]:
         raise NotImplementedError("Must be implemented by subclass")
 
     def pre_decoder_hook(self, td: TensorDict, env: RL4COEnvBase):
+        """Pre decoding hook. This method is called before the main decoding operation."""
         # Multi-start decoding. If num_starts is None, we use the number of actions in the action mask
         if self.multistart:
             if self.num_starts is None:
-                self.num_starts = get_num_starts(td, env.name)
+                self.num_starts = env.get_num_starts(td)
         else:
             if self.num_starts is not None:
                 if self.num_starts > 1:
@@ -61,7 +77,10 @@ class DecodingStrategy:
 
         # Multi-start decoding: first action is chosen by ad-hoc node selection
         if self.num_starts > 1:
-            action = select_start_nodes(td, env, self.num_starts)
+            if self.select_start_nodes_fn is not None:
+                action = self.select_start_nodes_fn(td, env, self.num_starts)
+            else:
+                action = env.select_start_nodes(td, num_starts=self.num_starts)
 
             # Expand td to batch_size * num_starts
             td = batchify(td, self.num_starts)
@@ -77,7 +96,9 @@ class DecodingStrategy:
 
         return td, env, self.num_starts
 
-    def post_decoder_hook(self, td, env):
+    def post_decoder_hook(
+        self, td: TensorDict, env: RL4COEnvBase
+    ) -> Tuple[torch.Tensor, torch.Tensor, TensorDict, RL4COEnvBase]:
         assert (
             len(self.logp) > 0
         ), "No outputs were collected because all environments were done. Check your initial state"
@@ -86,7 +107,7 @@ class DecodingStrategy:
 
     def step(
         self, logp: torch.Tensor, mask: torch.Tensor, td: TensorDict, **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor, TensorDict]:
+    ) -> TensorDict:
         assert not logp.isinf().all(1).any()
 
         logp, selected_actions, td = self._step(logp, mask, td, **kwargs)
@@ -102,12 +123,13 @@ class DecodingStrategy:
 class Greedy(DecodingStrategy):
     name = "greedy"
 
-    def __init__(self, multistart=False, num_starts=None, **kwargs) -> None:
-        super().__init__(multistart=multistart, num_starts=num_starts)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
     def _step(
         self, logp: torch.Tensor, mask: torch.Tensor, td: TensorDict, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, TensorDict]:
+        """Select the action with the highest log probability."""
         # [BS], [BS]
         _, selected = logp.max(1)
 
@@ -121,12 +143,13 @@ class Greedy(DecodingStrategy):
 class Sampling(DecodingStrategy):
     name = "sampling"
 
-    def __init__(self, multistart=False, num_starts=None, **kwargs) -> None:
-        super().__init__(multistart=multistart, num_starts=num_starts)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
     def _step(
         self, logp: torch.Tensor, mask: torch.Tensor, td: TensorDict, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, TensorDict]:
+        """Sample an action with a multinomial distribution given by the log probabilities."""
         probs = logp.exp()
         selected = torch.multinomial(probs, 1).squeeze(1)
 
@@ -145,7 +168,7 @@ class BeamSearch(DecodingStrategy):
     name = "beam_search"
 
     def __init__(self, beam_width=None, select_best=True, **kwargs) -> None:
-        super().__init__()
+        super().__init__(**kwargs)
         self.beam_width = beam_width
         self.select_best = select_best
         self.parent_beam_logp = None
@@ -168,10 +191,14 @@ class BeamSearch(DecodingStrategy):
 
     def pre_decoder_hook(self, td: TensorDict, env: RL4COEnvBase, **kwargs):
         if self.beam_width is None:
-            self.beam_width = get_num_starts(td, env.name)
+            self.beam_width = env.get_num_starts(td)
+        assert self.beam_width > 1, "beam width must be larger than 1"
 
         # select start nodes. TODO: include first step in beam search as well
-        action = select_start_nodes(td, env, self.beam_width)
+        if self.select_start_nodes_fn is not None:
+            action = self.select_start_nodes_fn(td, env, self.beam_width)
+        else:
+            action = env.select_start_nodes(td, num_starts=self.beam_width)
 
         # Expand td to batch_size * beam_width
         td = batchify(td, self.beam_width)

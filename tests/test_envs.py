@@ -7,6 +7,7 @@ import torch
 from rl4co.envs import (
     ATSPEnv,
     CVRPEnv,
+    CVRPTWEnv,
     DPPEnv,
     FFSPEnv,
     MDPPEnv,
@@ -17,6 +18,7 @@ from rl4co.envs import (
     SDVRPEnv,
     SMTWTPEnv,
     SPCTSPEnv,
+    SVRPEnv,
     TSPEnv,
 )
 from rl4co.models.nn.utils import random_policy, rollout
@@ -28,7 +30,19 @@ warnings.filterwarnings("ignore", "Matplotlib is currently using agg")
 
 @pytest.mark.parametrize(
     "env_cls",
-    [TSPEnv, CVRPEnv, SDVRPEnv, PCTSPEnv, SPCTSPEnv, OPEnv, PDPEnv, MTSPEnv, ATSPEnv],
+    [
+        TSPEnv,
+        CVRPEnv,
+        CVRPTWEnv,
+        SVRPEnv,
+        SDVRPEnv,
+        PCTSPEnv,
+        SPCTSPEnv,
+        OPEnv,
+        PDPEnv,
+        MTSPEnv,
+        ATSPEnv,
+    ],
 )
 def test_routing(env_cls, batch_size=2, size=20):
     env = env_cls(num_loc=size)
@@ -55,7 +69,7 @@ def test_scheduling(env_cls, batch_size=2):
         batch_size=[batch_size],
     )
     td = env.reset()
-    td["job_idx"] = torch.tensor([1, 1])
+    td["action"] = torch.tensor([1, 1])
     td = env._step(td)
 
 
